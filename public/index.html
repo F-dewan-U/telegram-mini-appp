@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Play & Earn</title>
+</head>
+<body>
+<h1>Play & Earn</h1>
+<p>Click buttons to watch ads and earn balance</p>
+
+<button onclick="clickAd('monetag')">Monetag Ad</button>
+<button onclick="clickAd('gigapub')">Gigapub Ad</button>
+<button onclick="clickAd('adstera')">Adstera Ad</button>
+
+<p id="status"></p>
+<p id="balance">Balance: $0</p>
+
+<script>
+const telegram_id = prompt("Enter your Telegram ID"); // temporary for testing
+
+async function clickAd(slot) {
+    const res = await fetch("/click", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({telegram_id, slot})
+    });
+    const data = await res.json().catch(e=>{alert("Error");});
+    if(res.ok){
+        document.getElementById("status").innerText = "Ad clicked: "+slot;
+        document.getElementById("balance").innerText = "Balance: $" + data.balance.toFixed(2);
+    } else {
+        alert(data);
+    }
+}
+</script>
+</body>
+</html>
