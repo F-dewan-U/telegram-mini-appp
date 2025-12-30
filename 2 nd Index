@@ -1,0 +1,103 @@
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const bodyParser = require("body-parser");
+require("dotenv").config();
+
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static("public"));
+
+// MongoDB connect
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(()=>console.log("MongoDB Connected ✅"))
+.catch(err=>console.log(err));
+
+// User schema
+const userSchema = new mongoose.Schema({
+  telegram_id: String,
+  username: String,
+  balance: {type:Number, default:0},
+  referral_code: String,
+  referred_by: String,
+  daily_clicks: {type: Map, of: Number, default: {}},
+  total_earned: {type:Number, default:0}
+});
+
+const User = mongoose.model("User", userSchema);
+
+// Admin schema
+const adminSchema = new mongoose.Schema({
+  username: String,
+  password: String
+});
+
+const Admin = mongoose.model("Admin", adminSchema);
+
+// Routes
+
+// Mini App Home
+app.get("/", (req,res)=>res.sendFile(__dirname + "/public/index.html"));
+
+// Admin Panel
+app.get("/admin", (req,res)=>res.sendFile(__dirname + "/public/admin.html"));
+
+// API — Click Ad
+app.post("/click", async (req,res)=>{
+  const { telegram_id, slot } = req.body;
+  let user = await User.findOne({telegram_id});
+  if(!user) return res.status(404).send("User not found");
+
+  let clicks = user.daily_clicks.get(slot) || 0;
+  if(clicks>=10) return res.status(400).send("Daily click limit reached");
+
+  user.daily_clicks.set(slot, clicks+1);
+  user.balance += 0.1; // reward per click
+  user.total_earned +=0.1;
+  await user.save();
+
+  res.json({balance:user.balance, clicks:clicks+1});
+});
+
+// API — Referral Join
+app.post("/referral", async (req,res)=>{
+  const { telegram_id, code } = req.body;
+  let user = await User.findOne({telegram_id});
+  if(!user) return res.status(404).send("User not found");
+
+  if(!user.referred_by){
+    let refUser = await User.findOne({referral_code:code});
+    if(refUser){
+      user.referred_by = code;
+      user.balance += 0.2;  // referral bonus
+      refUser.balance +=0.2; // referrer bonus
+      await user.save();
+      await refUser.save();
+      return res.json({balance:user.balance, ref_bonus:true});
+    }
+  }
+  res.json({balance:user.balance, ref_bonus:false});
+});
+
+// API — Withdraw
+app.post("/withdraw", async (req,res)=>{
+  const { telegram_id, method, amount } = req.body;
+  let user = await User.findOne({telegram_id});
+  if(!user) return res.status(404).send("User not found");
+
+  if(user.balance < amount) return res.status(400).send("Insufficient balance");
+
+  // Deduct balance
+  user.balance -= amount;
+  await user.save();
+
+  // Process Withdraw → Integration with Payoneer / Bkash later
+  res.json({balance:user.balance, withdrawn:amount, method});
+});
+
+// Start Server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, ()=>console.log("Server running on port "+PORT));
